@@ -109,6 +109,10 @@ def create_app(cfg: Config) -> FastAPI:
     async def api_graph() -> JSONResponse:
         return JSONResponse(pipeline.graph.to_vis())
 
+    @app.get("/api/cameras")
+    async def api_cameras() -> JSONResponse:
+        return JSONResponse(pipeline.snapshot())
+
     @app.get("/api/traces")
     async def api_traces() -> JSONResponse:
         return JSONResponse(pipeline.tracer.tail(50))

@@ -28,6 +28,13 @@
   .ev .m { margin-top: 2px; }
   .legend { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 8px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .camstrip { display: flex; gap: 10px; padding: 10px 12px 0; overflow-x: auto; }
+  .camcard { flex: 0 0 auto; width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
+  .camcard img { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 4/3; object-fit: cover; display: block; }
+  .camcard .lbl { font-size: 12px; margin-top: 5px; display: flex; justify-content: space-between; }
+  .camcard .lbl b { color: var(--accent); }
+  .camcard .lbl span { color: var(--muted); }
+  .camstrip .empty { color: var(--muted); font-size: 13px; padding: 8px; }
 </style>
 </head>
 <body>
@@ -38,6 +45,7 @@
   <span class="badge" id="trust" style="background:#1a1530;color:#b59cff;border-color:#332a55;">trust: —</span>
   <span class="badge" id="conn" style="background:#101a2a;color:var(--accent);border-color:#1c3454;">connecting…</span>
 </header>
+<div class="camstrip" id="camstrip"><div class="empty">No cameras connected yet…</div></div>
 <div class="grid">
   <section class="panel">
     <h2>Camera</h2>
@@ -126,6 +134,21 @@ async function checkNet() {
   }
 }
 checkNet(); setInterval(checkNet, 3000);
+
+// --- live per-camera thumbnail strip ---
+const stripEl = document.getElementById('camstrip');
+async function refreshCameras() {
+  try {
+    const r = await fetch('/api/cameras'); const cams = await r.json();
+    if (!cams.length) { stripEl.innerHTML = '<div class="empty">No cameras connected yet…</div>'; return; }
+    stripEl.innerHTML = cams.map(c => {
+      const src = c.thumb ? `data:image/jpeg;base64,${c.thumb}` : '';
+      return `<div class="camcard"><img ${src?`src="${src}"`:''} alt="${c.id}">`
+        + `<div class="lbl"><b>${c.id}</b><span>${c.zone}</span></div></div>`;
+    }).join('');
+  } catch (_) {}
+}
+refreshCameras(); setInterval(refreshCameras, 1500);
 
 // --- websocket ---
 function connect() {

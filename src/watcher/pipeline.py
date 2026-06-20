@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+import cv2
+
 from .capture import FrameSource, encode_jpeg
 from .change_detector import ChangeDetector
 from .config import Config
@@ -50,6 +52,8 @@ class Pipeline:
 
         self._cameras: dict[str, Camera] = {}
         self._cam_lock = threading.Lock()
+        self._last_frames: dict[str, object] = {}   # cam_id -> latest BGR frame
+        self._frame_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = False
 
@@ -71,10 +75,30 @@ class Pipeline:
     def remove_camera(self, cam_id: str) -> None:
         with self._cam_lock:
             cam = self._cameras.pop(cam_id, None)
+        with self._frame_lock:
+            self._last_frames.pop(cam_id, None)
         if cam is not None:
             cam.source.release()
             self._emit({"type": "camera", "event": "disconnected", "camera": cam_id,
                         "count": len(self._cameras)})
+
+    def snapshot(self, max_width: int = 240) -> list[dict]:
+        """Return a small live thumbnail (base64 JPEG) for every connected camera."""
+        with self._cam_lock:
+            cams = list(self._cameras.values())
+        with self._frame_lock:
+            frames = dict(self._last_frames)
+        out = []
+        for cam in cams:
+            f = frames.get(cam.id)
+            thumb = ""
+            if f is not None:
+                h, w = f.shape[:2]
+                if w > max_width:
+                    f = cv2.resize(f, (max_width, int(h * max_width / w)))
+                thumb = base64.b64encode(encode_jpeg(f, quality=55)).decode("ascii")
+            out.append({"id": cam.id, "zone": cam.zone, "thumb": thumb})
+        return out
 
     # --- lifecycle -------------------------------------------------------
     def start(self) -> None:
@@ -109,6 +133,8 @@ class Pipeline:
                 frame = cam.source.read()
                 if frame is None:
                     continue
+                with self._frame_lock:
+                    self._last_frames[cam.id] = frame
                 try:
                     event = cam.detector.update(frame)
                 except Exception as exc:  # never let the loop die
