@@ -75,6 +75,7 @@ class Perception:
             model=self.cfg.vlm_model,
             prompt=_PROMPT,
             images=[b64],
+            format="json",          # force valid JSON (qwen3-vl else wraps it in prose)
             options={"temperature": 0},
         )
         text = resp.get("response", "") if isinstance(resp, dict) else str(resp)
