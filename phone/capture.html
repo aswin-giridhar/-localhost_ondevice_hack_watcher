@@ -6,75 +6,134 @@
 <title>Watcher — Phone Eye</title>
 <style>
   body { margin:0; background:#0b0f17; color:#e6edf6; font-family:system-ui,"Segoe UI",sans-serif; text-align:center; }
-  video { width:100%; max-height:70vh; background:#000; }
-  .bar { padding:14px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; }
+  video { width:100%; max-height:64vh; background:#000; }
+  .bar { padding:10px 14px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; }
   button { font-size:16px; padding:12px 22px; border-radius:10px; border:0; background:#4ea1ff; color:#04122a; font-weight:700; }
   button.stop { background:#ff5d6c; color:#1a0509; }
-  #status { font-size:13px; color:#8aa0bd; }
+  button.alt { background:#27374d; color:#e6edf6; }
+  button:disabled { opacity:.45; }
+  select { font-size:15px; padding:9px; border-radius:8px; background:#131a26; color:#e6edf6; border:1px solid #1f2a3a; max-width:60vw; }
   .fps { font-size:13px; color:#8aa0bd; }
   input { width:60px; }
+  .statusbar { display:flex; gap:9px; align-items:center; justify-content:center; font-size:14px; padding:8px 14px; font-weight:600; }
+  .dot { width:12px; height:12px; border-radius:50%; background:#8aa0bd; }
+  .dot.live { background:#45d483; animation:pulse 1.2s infinite; }
+  .dot.err { background:#ff5d6c; }
+  .dot.connecting { background:#ffc857; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(69,212,131,.6)} 70%{box-shadow:0 0 0 9px rgba(69,212,131,0)} 100%{box-shadow:0 0 0 0 rgba(69,212,131,0)} }
 </style>
 </head>
 <body>
   <video id="cam" autoplay playsinline muted></video>
+  <div class="statusbar"><span id="dot" class="dot"></span><span id="status">Idle — tap Start streaming to begin.</span></div>
   <div class="bar">
     <span class="fps">camera <input id="camid" type="text" value="phone-1" style="width:90px"></span>
     <span class="fps">zone <input id="zone" type="text" value="desk" style="width:90px"></span>
     <span class="fps">fps <input id="fps" type="number" value="6" min="1" max="15"></span>
   </div>
   <div class="bar">
+    <select id="camsel" title="Choose camera"><option>default camera</option></select>
+    <button id="flip" class="alt" type="button">Flip front/back</button>
+  </div>
+  <div class="bar">
     <button id="start">Start streaming</button>
     <button id="stop" class="stop" disabled>Stop</button>
   </div>
-  <div id="status">Point at the scene, then press Start. Stays on your LAN — no internet.</div>
   <canvas id="buf" style="display:none"></canvas>
 <script>
 const video = document.getElementById('cam');
 const buf = document.getElementById('buf');
 const statusEl = document.getElementById('status');
-let ws = null, timer = null, stream = null;
+const dot = document.getElementById('dot');
+const camsel = document.getElementById('camsel');
+let ws = null, timer = null, statTimer = null, stream = null, facing = 'environment', sent = 0;
 
-async function start() {
+function setStatus(text, kind) { statusEl.textContent = text; dot.className = 'dot ' + (kind || ''); }
+function streamingMsg() { return `LIVE · streaming to laptop · ${sent} frames sent`; }
+
+async function startVideo(constraints) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+  video.srcObject = stream;
+  await video.play();
+}
+
+async function populateCameras() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 } }, audio: false
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const cams = devs.filter(d => d.kind === 'videoinput');
+    if (!cams.length) return;
+    camsel.innerHTML = '';
+    cams.forEach((d, i) => {
+      const o = document.createElement('option');
+      o.value = d.deviceId; o.textContent = d.label || ('Camera ' + (i + 1));
+      camsel.appendChild(o);
     });
-    video.srcObject = stream;
-    await video.play();
+    const track = stream && stream.getVideoTracks()[0];
+    const cur = track && track.getSettings && track.getSettings().deviceId;
+    if (cur) camsel.value = cur;
+  } catch (_) {}
+}
+
+// Switch camera; if already streaming, keep the websocket open (frames just come
+// from the newly selected camera).
+async function applyCamera(constraints) {
+  const wasStreaming = !!timer;
+  setStatus('Switching camera…', 'connecting');
+  try {
+    await startVideo(constraints);
+    await populateCameras();
+    setStatus(wasStreaming ? streamingMsg() : 'Camera ready — tap Start streaming.', wasStreaming ? 'live' : '');
+  } catch (e) { setStatus('Camera error: ' + e, 'err'); }
+}
+
+async function startStreaming() {
+  try {
+    if (!stream) { await startVideo({ facingMode: { ideal: facing }, width: { ideal: 640 } }); await populateCameras(); }
     const cam = encodeURIComponent(document.getElementById('camid').value || 'phone-1');
     const zone = encodeURIComponent(document.getElementById('zone').value || 'desk');
-    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${wsProto}://${location.host}/ws/ingest?cam=${cam}&zone=${zone}`);
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    setStatus('Connecting to laptop…', 'connecting');
+    ws = new WebSocket(`${proto}://${location.host}/ws/ingest?cam=${cam}&zone=${zone}`);
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
-      statusEl.textContent = 'Streaming to the laptop brain…';
+      sent = 0;
       const fps = Math.max(1, Math.min(15, +document.getElementById('fps').value || 6));
       timer = setInterval(sendFrame, 1000 / fps);
+      statTimer = setInterval(() => { if (timer) setStatus(streamingMsg(), 'live'); }, 1000);
+      setStatus(streamingMsg(), 'live');
       document.getElementById('start').disabled = true;
       document.getElementById('stop').disabled = false;
     };
-    ws.onclose = () => { statusEl.textContent = 'Disconnected.'; stop(); };
-  } catch (e) { statusEl.textContent = 'Camera error: ' + e; }
+    ws.onclose = () => { if (timer) setStatus('Disconnected from laptop.', 'err'); stopStreaming(); };
+    ws.onerror = () => setStatus('Connection error — did you accept the certificate warning?', 'err');
+  } catch (e) { setStatus('Camera error: ' + e, 'err'); }
 }
 
 function sendFrame() {
   if (!ws || ws.readyState !== 1 || !video.videoWidth) return;
   buf.width = video.videoWidth; buf.height = video.videoHeight;
   buf.getContext('2d').drawImage(video, 0, 0);
-  buf.toBlob(b => b && b.arrayBuffer().then(ab => ws.readyState === 1 && ws.send(ab)),
+  buf.toBlob(b => { if (b && ws && ws.readyState === 1) b.arrayBuffer().then(ab => { ws.send(ab); sent++; }); },
              'image/jpeg', 0.7);
 }
 
-function stop() {
+function stopStreaming() {
   if (timer) clearInterval(timer); timer = null;
+  if (statTimer) clearInterval(statTimer); statTimer = null;
   if (ws) { try { ws.close(); } catch (_) {} ws = null; }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   document.getElementById('start').disabled = false;
   document.getElementById('stop').disabled = true;
+  setStatus(stream ? 'Stopped — camera on, not streaming.' : 'Idle.', '');
 }
 
-document.getElementById('start').onclick = start;
-document.getElementById('stop').onclick = stop;
+camsel.onchange = () => { if (camsel.value) applyCamera({ deviceId: { exact: camsel.value } }); };
+document.getElementById('flip').onclick = () => {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  applyCamera({ facingMode: { ideal: facing }, width: { ideal: 640 } });
+};
+document.getElementById('start').onclick = startStreaming;
+document.getElementById('stop').onclick = stopStreaming;
 </script>
 </body>
 </html>
