@@ -135,17 +135,31 @@ async function checkNet() {
 }
 checkNet(); setInterval(checkNet, 3000);
 
-// --- live per-camera thumbnail strip ---
+// --- live per-camera thumbnail strip (updates <img> in place, no DOM rebuild) ---
 const stripEl = document.getElementById('camstrip');
+const camImgs = {};
 async function refreshCameras() {
   try {
     const r = await fetch('/api/cameras?t=' + Date.now(), {cache: 'no-store'}); const cams = await r.json();
-    if (!cams.length) { stripEl.innerHTML = '<div class="empty">No cameras connected yet…</div>'; return; }
-    stripEl.innerHTML = cams.map(c => {
-      const src = c.thumb ? `data:image/jpeg;base64,${c.thumb}` : '';
-      return `<div class="camcard"><img ${src?`src="${src}"`:''} alt="${c.id}">`
-        + `<div class="lbl"><b>${c.id}</b><span>${c.zone}</span></div></div>`;
-    }).join('');
+    if (!cams.length) {
+      if (stripEl.dataset.ids !== '') { stripEl.innerHTML = '<div class="empty">No cameras connected yet…</div>'; stripEl.dataset.ids = ''; }
+      return;
+    }
+    const ids = cams.map(c => c.id).join(',');
+    if (stripEl.dataset.ids !== ids) {            // structure only rebuilt when the camera set changes
+      stripEl.innerHTML = '';
+      for (const k in camImgs) delete camImgs[k];
+      cams.forEach(c => {
+        const card = document.createElement('div'); card.className = 'camcard';
+        const img = document.createElement('img'); img.alt = c.id;
+        const lbl = document.createElement('div'); lbl.className = 'lbl';
+        lbl.innerHTML = `<b>${c.id}</b><span>${c.zone}</span>`;
+        card.appendChild(img); card.appendChild(lbl); stripEl.appendChild(card);
+        camImgs[c.id] = img;
+      });
+      stripEl.dataset.ids = ids;
+    }
+    cams.forEach(c => { const img = camImgs[c.id]; if (img && c.thumb) img.src = 'data:image/jpeg;base64,' + c.thumb; });
   } catch (_) {}
 }
 refreshCameras(); setInterval(refreshCameras, 1500);
@@ -177,7 +191,12 @@ async function fetchGraph() {
   } catch (_) {}
 }
 
-function step() {
+let lastStep = 0;
+function step(now) {
+  requestAnimationFrame(step);
+  // Cap to ~30fps and pause when the tab is hidden — keeps the browser light.
+  if (document.hidden || (now - lastStep) < 33) return;
+  lastStep = now;
   const W = canvas.width, H = canvas.height;
   // repulsion
   for (let i=0;i<nodes.length;i++) for (let j=i+1;j<nodes.length;j++) {
@@ -194,7 +213,6 @@ function step() {
     p.vx*=0.85; p.vy*=0.85; p.x+=p.vx; p.y+=p.vy;
     p.x=Math.max(20,Math.min(W-20,p.x)); p.y=Math.max(20,Math.min(H-20,p.y)); });
   draw();
-  requestAnimationFrame(step);
 }
 
 function draw() {
@@ -209,7 +227,7 @@ function draw() {
     ctx.fillText(String(n.label).slice(0,18), p.x+9, p.y+3); });
 }
 
-fetchGraph(); setInterval(fetchGraph, 4000); step();
+fetchGraph(); setInterval(fetchGraph, 4000); requestAnimationFrame(step);
 </script>
 </body>
 </html>

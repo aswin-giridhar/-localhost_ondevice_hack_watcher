@@ -196,10 +196,32 @@ class SceneGraph:
         return "\n".join(lines)
 
     # --- visualization ---------------------------------------------------
-    def to_vis(self) -> dict:
+    def to_vis(self, max_events: int = 35, max_objects: int = 40) -> dict:
+        """Bounded graph for the dashboard: all zones + recent objects + recent events.
+
+        Capping keeps the payload small and the browser's force-layout (which is
+        O(n^2) per frame) fast even after the graph has been running for a while.
+        """
         groups = {"zone": "zone", "object": "object", "event": "event"}
-        nodes = []
+
+        zones, objects, events = [], [], []
         for nid, d in self.g.nodes(data=True):
+            t = d.get("type", "object")
+            if t == "zone":
+                zones.append((nid, d))
+            elif t == "object":
+                objects.append((nid, d))
+            elif t == "event":
+                events.append((nid, d))
+
+        objects.sort(key=lambda x: x[1].get("last_seen", 0), reverse=True)
+        events.sort(key=lambda x: x[1].get("ts", 0), reverse=True)
+        objects = objects[:max_objects]
+        events = events[:max_events]
+
+        keep = {nid for nid, _ in zones} | {nid for nid, _ in objects} | {nid for nid, _ in events}
+        nodes = []
+        for nid, d in [*zones, *objects, *events]:
             t = d.get("type", "object")
             label = d.get("label", nid)
             if t == "event":
@@ -212,5 +234,6 @@ class SceneGraph:
         edges = [
             {"from": u, "to": v, "label": d.get("rel", "")}
             for u, v, d in self.g.edges(data=True)
+            if u in keep and v in keep
         ]
         return {"nodes": nodes, "edges": edges, "ts": time.time()}
