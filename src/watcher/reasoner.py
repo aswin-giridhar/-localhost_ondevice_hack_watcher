@@ -28,7 +28,7 @@ class Reasoner:
             try:
                 import ollama
 
-                self._client = ollama
+                self._client = ollama.Client(host=getattr(cfg, "ollama_host", None) or None)
             except Exception:
                 self._client = None
 

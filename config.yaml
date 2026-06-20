@@ -29,7 +29,7 @@ change_detector:
 perception:
   backend: "ollama"       # "ollama" | "mock"
   # A single VLM that can both see AND reason keeps us under 4GB VRAM.
-  vlm_model: "qwen2-vl:2b"
+  vlm_model: "qwen3-vl:2b"
   # Optional separate reasoner. Leave blank to let the VLM also decide.
   reasoner_model: "phi4-mini"
   request_timeout: 60

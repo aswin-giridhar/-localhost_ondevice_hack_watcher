@@ -35,9 +35,12 @@ class ChangeDetectorCfg:
 @dataclass
 class PerceptionCfg:
     backend: str = "ollama"
-    vlm_model: str = "qwen2-vl:2b"
+    vlm_model: str = "qwen3-vl:2b"
     reasoner_model: str = "phi4-mini"
     request_timeout: int = 60
+    # Explicit Ollama host. Defaults to loopback so a stray OLLAMA_HOST=0.0.0.0
+    # in the environment (a bind address, not connectable) doesn't break the client.
+    ollama_host: str = "http://127.0.0.1:11434"
 
 
 @dataclass

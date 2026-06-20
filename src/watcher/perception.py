@@ -45,9 +45,9 @@ class Perception:
         self._client = None
         if cfg.backend == "ollama":
             try:
-                import ollama  # noqa: F401
+                import ollama
 
-                self._client = ollama
+                self._client = ollama.Client(host=getattr(cfg, "ollama_host", None) or None)
             except Exception:
                 self._client = None
 

@@ -19,8 +19,8 @@ change_detector:
   warmup_frames: 8
 
 perception:
-  backend: "ollama"       # falls back to a lively mock if Ollama isn't running
-  vlm_model: "qwen2-vl:2b"
+  backend: "ollama"       # falls back to mock if Ollama isn't running
+  vlm_model: "qwen3-vl:2b"
   reasoner_model: "phi4-mini"
   request_timeout: 60
 
