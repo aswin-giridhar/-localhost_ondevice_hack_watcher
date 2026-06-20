@@ -139,7 +139,7 @@ checkNet(); setInterval(checkNet, 3000);
 const stripEl = document.getElementById('camstrip');
 async function refreshCameras() {
   try {
-    const r = await fetch('/api/cameras'); const cams = await r.json();
+    const r = await fetch('/api/cameras?t=' + Date.now(), {cache: 'no-store'}); const cams = await r.json();
     if (!cams.length) { stripEl.innerHTML = '<div class="empty">No cameras connected yet…</div>'; return; }
     stripEl.innerHTML = cams.map(c => {
       const src = c.thumb ? `data:image/jpeg;base64,${c.thumb}` : '';
@@ -171,7 +171,7 @@ window.addEventListener('resize', resize); resize();
 
 async function fetchGraph() {
   try {
-    const r = await fetch('/api/graph'); const g = await r.json();
+    const r = await fetch('/api/graph?t=' + Date.now(), {cache: 'no-store'}); const g = await r.json();
     nodes = g.nodes; edges = g.edges;
     nodes.forEach(n => { if (!pos[n.id]) pos[n.id] = { x: Math.random()*canvas.width, y: Math.random()*canvas.height, vx:0, vy:0 }; });
   } catch (_) {}

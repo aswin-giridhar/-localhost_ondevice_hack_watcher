@@ -73,6 +73,13 @@ def create_app(cfg: Config) -> FastAPI:
     pipeline = Pipeline(cfg, on_event=hub.publish_threadsafe)
     cam_counter = {"n": 0}
 
+    @app.middleware("http")
+    async def _no_cache(request, call_next):
+        resp = await call_next(request)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
     def _open_webcam(cam_id: str, zone: str) -> None:
         try:
             pipeline.add_camera(cam_id, zone, WebcamFrameSource(cfg.capture.webcam_index))

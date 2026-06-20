@@ -8,6 +8,7 @@ the supplied thread-safe callback.
 from __future__ import annotations
 
 import base64
+import queue
 import threading
 import time
 from dataclasses import dataclass
@@ -54,7 +55,11 @@ class Pipeline:
         self._cam_lock = threading.Lock()
         self._last_frames: dict[str, object] = {}   # cam_id -> latest BGR frame
         self._frame_lock = threading.Lock()
+        # Heavy perception/reasoning runs on a separate worker so the capture loop
+        # (frame reads + live thumbnails + change detection) never blocks on the GPU.
+        self._work: queue.Queue = queue.Queue(maxsize=4)
         self._thread: threading.Thread | None = None
+        self._worker: threading.Thread | None = None
         self._running = False
 
     # --- camera registry -------------------------------------------------
@@ -107,11 +112,15 @@ class Pipeline:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
+        self._worker = threading.Thread(target=self._work_loop, daemon=True)
+        self._worker.start()
 
     def stop(self) -> None:
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
+        if self._worker:
+            self._worker.join(timeout=2.0)
         with self._cam_lock:
             cams = list(self._cameras.values())
         for cam in cams:
@@ -134,20 +143,35 @@ class Pipeline:
                 if frame is None:
                     continue
                 with self._frame_lock:
-                    self._last_frames[cam.id] = frame
+                    self._last_frames[cam.id] = frame      # keeps live thumbnails fresh
                 try:
                     event = cam.detector.update(frame)
                 except Exception as exc:  # never let the loop die
                     self._emit({"type": "error", "message": f"detector[{cam.id}]: {exc}"})
                     continue
                 if event is not None:
-                    self._process(cam, frame, event)
+                    self._emit({"type": "change", "ts": event.timestamp,
+                                "area": event.changed_area, "camera": cam.id, "zone": cam.zone})
+                    try:
+                        self._work.put_nowait((cam, frame, event))
+                    except queue.Full:
+                        pass   # GPU busy; drop this trigger rather than lag behind reality
             time.sleep(interval)
+
+    def _work_loop(self) -> None:
+        """Background worker: runs the slow trust+VLM+reason+narrate steps."""
+        while self._running:
+            try:
+                cam, frame, event = self._work.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._process(cam, frame, event)
+            except Exception as exc:
+                self._emit({"type": "error", "message": f"process[{cam.id}]: {exc}"})
 
     def _process(self, cam: Camera, frame, event) -> None:
         zone = cam.zone
-        self._emit({"type": "change", "ts": event.timestamp, "area": event.changed_area,
-                    "camera": cam.id, "zone": zone})
 
         # 1) Captur-style trust gate: validate the capture before acting on it.
         trust = self.trust.check(frame)
