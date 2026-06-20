@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import json
-import random
 import time
 from dataclasses import dataclass, field
 
@@ -88,17 +87,16 @@ class Perception:
             source="vlm",
         )
 
-    _MOCK_VOCAB = ["mug", "laptop", "phone", "book", "keys", "bottle", "pen", "wallet"]
-
     def _mock(self, frame: np.ndarray, zone: str) -> Observation:
-        # Vary the labels so the graph/demo looks alive without a real model.
-        n = random.randint(1, 4)
-        chosen = random.sample(self._MOCK_VOCAB, n)
+        # Honest placeholder: with no vision model we CANNOT identify contents, so
+        # we report a single generic "unidentified object" instead of inventing
+        # things. Connect Ollama (see README) for real, accurate perception.
         return Observation(
             timestamp=time.time(),
             zone=zone,
-            items=[{"label": l, "position": "center", "notable": ""} for l in chosen],
-            summary=f"[mock perception] scene contains: {', '.join(chosen)}",
+            items=[{"label": "unidentified object", "position": "center",
+                    "notable": "no vision model connected"}],
+            summary="[mock] change detected — no local VLM, contents not identified",
             source="mock",
         )
 
