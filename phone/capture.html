@@ -43,7 +43,8 @@ async function start() {
     await video.play();
     const cam = encodeURIComponent(document.getElementById('camid').value || 'phone-1');
     const zone = encodeURIComponent(document.getElementById('zone').value || 'desk');
-    ws = new WebSocket(`ws://${location.host}/ws/ingest?cam=${cam}&zone=${zone}`);
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${wsProto}://${location.host}/ws/ingest?cam=${cam}&zone=${zone}`);
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
       statusEl.textContent = 'Streaming to the laptop brain…';

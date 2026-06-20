@@ -14,6 +14,9 @@ ollama>=0.3.0              # serves the VLM + Phi-4-mini locally; falls back to 
 networkx>=3.2              # primary graph store (reliable, fully local)
 # cognee>=0.1.0            # OPTIONAL: richer graph engine; configure fully local before enabling
 
+# --- HTTPS for phone/tablet cameras (self-signed cert) ---
+cryptography>=42.0.0      # generates the local self-signed TLS cert
+
 # --- Voice / narration (optional) ---
 pyttsx3>=2.90             # offline TTS; on-screen narration used if unavailable
 

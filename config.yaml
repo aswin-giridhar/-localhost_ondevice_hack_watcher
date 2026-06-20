@@ -3,6 +3,12 @@
 server:
   host: "0.0.0.0"        # bind to LAN so the phone can reach it
   port: 8000
+  # HTTPS is required for phone/tablet cameras (mobile browsers block camera access
+  # on plain http). A self-signed cert is auto-generated on first run; accept the
+  # browser warning on each device. Set false for laptop-only (http) testing.
+  https: true
+  certfile: "data/certs/cert.pem"
+  keyfile: "data/certs/key.pem"
 
 capture:
   # source:

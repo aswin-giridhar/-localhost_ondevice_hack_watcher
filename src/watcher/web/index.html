@@ -129,7 +129,8 @@ checkNet(); setInterval(checkNet, 3000);
 
 // --- websocket ---
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws/events`);
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${wsProto}://${location.host}/ws/events`);
   ws.onopen = () => { connEl.textContent = 'live'; ws.send('hi'); };
   ws.onclose = () => { connEl.textContent = 'reconnecting…'; setTimeout(connect, 1500); };
   ws.onmessage = (m) => { try { addEvent(JSON.parse(m.data)); } catch (_) {} };

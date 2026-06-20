@@ -12,6 +12,9 @@ import yaml
 class ServerCfg:
     host: str = "0.0.0.0"
     port: int = 8000
+    https: bool = False                       # serve over TLS (needed for phone cameras)
+    certfile: str = "data/certs/cert.pem"
+    keyfile: str = "data/certs/key.pem"
 
 
 @dataclass

@@ -22,9 +22,23 @@ def main() -> None:
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
     cfg = Config.load(cfg_path)
     app = create_app(cfg)
-    print(f"Watcher dashboard:  http://{cfg.server.host}:{cfg.server.port}")
-    print(f"Phone camera page:  http://<laptop-lan-ip>:{cfg.server.port}/phone")
-    uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, log_level="info")
+
+    ssl_args = {}
+    scheme = "http"
+    if cfg.server.https:
+        from watcher.tls import ensure_cert, local_ips
+
+        cert, key = ensure_cert(cfg.server.certfile, cfg.server.keyfile)
+        ssl_args = {"ssl_certfile": cert, "ssl_keyfile": key}
+        scheme = "https"
+        ips = ", ".join(f"{scheme}://{ip}:{cfg.server.port}/phone" for ip in local_ips()
+                        if ip != "127.0.0.1")
+        print(f"Phone/tablet camera (same Wi-Fi): {ips or '<laptop-lan-ip>'}")
+        print("  -> accept the self-signed certificate warning on the device.")
+
+    print(f"Watcher dashboard:  {scheme}://localhost:{cfg.server.port}")
+    print(f"Phone camera page:  {scheme}://<laptop-lan-ip>:{cfg.server.port}/phone")
+    uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, log_level="info", **ssl_args)
 
 
 if __name__ == "__main__":
