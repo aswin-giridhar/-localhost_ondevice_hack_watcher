@@ -97,13 +97,17 @@ def create_app(cfg: Config) -> FastAPI:
     async def _shutdown() -> None:
         pipeline.stop()
 
+    _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
     @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        return (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    async def index() -> HTMLResponse:
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html, headers=_NO_CACHE)
 
     @app.get("/phone", response_class=HTMLResponse)
-    async def phone() -> str:
-        return (PHONE_DIR / "capture.html").read_text(encoding="utf-8")
+    async def phone() -> HTMLResponse:
+        html = (PHONE_DIR / "capture.html").read_text(encoding="utf-8")
+        return HTMLResponse(html, headers=_NO_CACHE)
 
     @app.get("/api/graph")
     async def api_graph() -> JSONResponse:
