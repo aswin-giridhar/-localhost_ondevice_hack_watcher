@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import random
 import time
 from dataclasses import dataclass, field
 
@@ -32,7 +33,8 @@ class Observation:
     zone: str
     items: list[dict] = field(default_factory=list)
     summary: str = ""
-    source: str = "vlm"
+    source: str = "vlm"        # which perception backend produced this
+    camera: str = "local"      # which camera/source the frame came from
 
     def labels(self) -> set[str]:
         return {str(i.get("label", "")).strip().lower() for i in self.items if i.get("label")}
@@ -86,14 +88,17 @@ class Perception:
             source="vlm",
         )
 
-    @staticmethod
-    def _mock(frame: np.ndarray, zone: str) -> Observation:
-        # Deterministic placeholder so the pipeline runs without a model.
+    _MOCK_VOCAB = ["mug", "laptop", "phone", "book", "keys", "bottle", "pen", "wallet"]
+
+    def _mock(self, frame: np.ndarray, zone: str) -> Observation:
+        # Vary the labels so the graph/demo looks alive without a real model.
+        n = random.randint(1, 4)
+        chosen = random.sample(self._MOCK_VOCAB, n)
         return Observation(
             timestamp=time.time(),
             zone=zone,
-            items=[{"label": "object", "position": "center", "notable": ""}],
-            summary="[mock perception] a change was detected in the scene",
+            items=[{"label": l, "position": "center", "notable": ""} for l in chosen],
+            summary=f"[mock perception] scene contains: {', '.join(chosen)}",
             source="mock",
         )
 

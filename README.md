@@ -44,13 +44,30 @@ pip install -r requirements.txt
 #   ollama pull phi4-mini
 # Without Ollama, Watcher runs with a mock perception + rule-based reasoning.
 
+# No camera handy? See the whole system come alive with the synthetic demo:
+python run.py config.demo.yaml
+
+# Real run:
 python run.py
 ```
 
 - Laptop dashboard: `http://localhost:8000`
-- Phone (same Wi-Fi/LAN): `http://<laptop-lan-ip>:8000/phone` -> **Start streaming**
+- Phone (same Wi-Fi/LAN): `http://<laptop-lan-ip>:8000/phone` -> set **camera/zone** -> **Start streaming**
 
 To test on the laptop alone (no phone), set `capture.source: webcam` in `config.yaml`.
+
+## Key capabilities
+
+- **Captur-style trust gate** (`trust.py`) — every keyframe is validated as a genuine,
+  usable on-device capture (not blank/blown-out/blurry) *before* the agent reasons about
+  it. Rejected frames show as `CAPTUR REJECTED` in the trace. Uses the Captur SDK if
+  present, else local heuristics — fully offline.
+- **Multi-camera** — several phones can stream at once (`/ws/ingest?cam=phone-2&zone=door`).
+  Each camera gets its own change detector; all feed **one shared knowledge graph**, tagged
+  by camera/zone, so you can track objects across cameras.
+- **Kill-switch / offline indicator** — the header badge polls `/api/netstatus` and flips to
+  green **OFFLINE / ON-DEVICE** the moment the network is cut (the demo flex), or red
+  **ONLINE — not isolated** when internet is reachable.
 
 ## Configuration
 

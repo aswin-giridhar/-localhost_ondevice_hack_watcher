@@ -12,6 +12,7 @@ Everything binds to the LAN so the phone can reach it; no internet is used.
 from __future__ import annotations
 
 import asyncio
+import socket
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -23,6 +24,21 @@ from .pipeline import Pipeline
 
 WEB_DIR = Path(__file__).parent / "web"
 PHONE_DIR = Path(__file__).parent.parent.parent / "phone"
+
+
+def _probe_internet(timeout: float = 0.8) -> bool:
+    """Best-effort connectivity probe for the kill-switch indicator.
+
+    Returns True only if an outbound connection succeeds. When the network is cut
+    (the demo flex), this fails fast and the dashboard shows OFFLINE / ON-DEVICE.
+    """
+    for host, port in (("8.8.8.8", 53), ("1.1.1.1", 53)):
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 class Hub:
@@ -54,13 +70,17 @@ class Hub:
 def create_app(cfg: Config) -> FastAPI:
     app = FastAPI(title="Watcher", version="0.1.0")
     hub = Hub()
-    source = make_source(cfg.capture)
-    pipeline = Pipeline(cfg, source, on_event=hub.publish_threadsafe)
+    pipeline = Pipeline(cfg, on_event=hub.publish_threadsafe)
+    cam_counter = {"n": 0}
 
     @app.on_event("startup")
     async def _startup() -> None:
         hub.loop = asyncio.get_running_loop()
         asyncio.create_task(hub.pump())
+        # Local sources (webcam/demo) register one camera up front; "stream" mode
+        # registers a camera per phone as it connects.
+        if cfg.capture.source in ("webcam", "demo"):
+            pipeline.add_camera("local", cfg.capture.zone, make_source(cfg.capture))
         pipeline.start()
 
     @app.on_event("shutdown")
@@ -83,18 +103,28 @@ def create_app(cfg: Config) -> FastAPI:
     async def api_traces() -> JSONResponse:
         return JSONResponse(pipeline.tracer.tail(50))
 
+    @app.get("/api/netstatus")
+    async def api_netstatus() -> JSONResponse:
+        loop = asyncio.get_running_loop()
+        online = await loop.run_in_executor(None, _probe_internet)
+        return JSONResponse({"online": online})
+
     @app.websocket("/ws/ingest")
     async def ws_ingest(ws: WebSocket) -> None:
         await ws.accept()
-        if not isinstance(source, StreamFrameSource):
-            await ws.close(code=1003)
-            return
+        cam_counter["n"] += 1
+        cam_id = ws.query_params.get("cam") or f"cam-{cam_counter['n']}"
+        zone = ws.query_params.get("zone") or cfg.capture.zone
+        src = StreamFrameSource()
+        pipeline.add_camera(cam_id, zone, src)
         try:
             while True:
                 data = await ws.receive_bytes()
-                source.push_jpeg(data)
+                src.push_jpeg(data)
         except WebSocketDisconnect:
             pass
+        finally:
+            pipeline.remove_camera(cam_id)
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket) -> None:

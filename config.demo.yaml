@@ -1,0 +1,43 @@
+# Quick demo config — no phone/webcam needed.
+# Run:  python run.py config.demo.yaml
+# Synthesizes a changing scene so the dashboard, graph, trust-gate, and traces
+# all come alive immediately. Everything still runs fully on-device.
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+capture:
+  source: "demo"          # synthetic changing scene
+  target_fps: 10
+  zone: "desk"
+
+change_detector:
+  min_area: 1200
+  threshold: 25
+  debounce_seconds: 1.5
+  warmup_frames: 8
+
+perception:
+  backend: "ollama"       # falls back to a lively mock if Ollama isn't running
+  vlm_model: "qwen2-vl:2b"
+  reasoner_model: "phi4-mini"
+  request_timeout: 60
+
+memory:
+  backend: "networkx"
+  db_path: "data/watcher_demo_graph.sqlite"
+  recent_window: 20
+
+trust:
+  enabled: true
+  min_blur: 40.0
+  min_brightness: 25
+  max_brightness: 235
+
+narrator:
+  enabled: true
+  tts: false
+
+tracer:
+  path: "traces/demo_decisions.jsonl"

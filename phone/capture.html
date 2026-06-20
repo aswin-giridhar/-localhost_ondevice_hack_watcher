@@ -18,9 +18,13 @@
 <body>
   <video id="cam" autoplay playsinline muted></video>
   <div class="bar">
+    <span class="fps">camera <input id="camid" type="text" value="phone-1" style="width:90px"></span>
+    <span class="fps">zone <input id="zone" type="text" value="desk" style="width:90px"></span>
+    <span class="fps">fps <input id="fps" type="number" value="6" min="1" max="15"></span>
+  </div>
+  <div class="bar">
     <button id="start">Start streaming</button>
     <button id="stop" class="stop" disabled>Stop</button>
-    <span class="fps">fps <input id="fps" type="number" value="6" min="1" max="15"></span>
   </div>
   <div id="status">Point at the scene, then press Start. Stays on your LAN — no internet.</div>
   <canvas id="buf" style="display:none"></canvas>
@@ -37,7 +41,9 @@ async function start() {
     });
     video.srcObject = stream;
     await video.play();
-    ws = new WebSocket(`ws://${location.host}/ws/ingest`);
+    const cam = encodeURIComponent(document.getElementById('camid').value || 'phone-1');
+    const zone = encodeURIComponent(document.getElementById('zone').value || 'desk');
+    ws = new WebSocket(`ws://${location.host}/ws/ingest?cam=${cam}&zone=${zone}`);
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
       statusEl.textContent = 'Streaming to the laptop brain…';

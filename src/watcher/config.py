@@ -46,6 +46,14 @@ class MemoryCfg:
 
 
 @dataclass
+class TrustCfg:
+    enabled: bool = True
+    min_blur: float = 40.0
+    min_brightness: int = 25
+    max_brightness: int = 235
+
+
+@dataclass
 class NarratorCfg:
     enabled: bool = True
     tts: bool = False
@@ -63,6 +71,7 @@ class Config:
     change_detector: ChangeDetectorCfg = field(default_factory=ChangeDetectorCfg)
     perception: PerceptionCfg = field(default_factory=PerceptionCfg)
     memory: MemoryCfg = field(default_factory=MemoryCfg)
+    trust: TrustCfg = field(default_factory=TrustCfg)
     narrator: NarratorCfg = field(default_factory=NarratorCfg)
     tracer: TracerCfg = field(default_factory=TracerCfg)
 
@@ -78,6 +87,7 @@ class Config:
             change_detector=ChangeDetectorCfg(**raw.get("change_detector", {})),
             perception=PerceptionCfg(**raw.get("perception", {})),
             memory=MemoryCfg(**raw.get("memory", {})),
+            trust=TrustCfg(**raw.get("trust", {})),
             narrator=NarratorCfg(**raw.get("narrator", {})),
             tracer=TracerCfg(**raw.get("tracer", {})),
         )

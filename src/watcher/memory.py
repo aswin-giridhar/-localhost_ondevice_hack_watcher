@@ -64,19 +64,20 @@ class SceneGraph:
         disappeared = sorted(present - seen)
 
         for label in seen:
-            self._touch_object(obs.zone, label, present=True, ts=obs.timestamp)
+            self._touch_object(obs.zone, label, present=True, ts=obs.timestamp, camera=obs.camera)
         for label in disappeared:
-            self._touch_object(obs.zone, label, present=False, ts=obs.timestamp)
+            self._touch_object(obs.zone, label, present=False, ts=obs.timestamp, camera=obs.camera)
 
         events = []
         for label in appeared:
-            events.append(self._add_event("appeared", obs.zone, label, obs.timestamp))
+            events.append(self._add_event("appeared", obs.zone, label, obs.timestamp, obs.camera))
         for label in disappeared:
-            events.append(self._add_event("disappeared", obs.zone, label, obs.timestamp))
+            events.append(self._add_event("disappeared", obs.zone, label, obs.timestamp, obs.camera))
 
         self._save()
         return {
             "zone": obs.zone,
+            "camera": obs.camera,
             "appeared": appeared,
             "disappeared": disappeared,
             "present": sorted(seen),
@@ -90,11 +91,12 @@ class SceneGraph:
                 out.add(data["label"])
         return out
 
-    def _touch_object(self, zone: str, label: str, present: bool, ts: float) -> str:
+    def _touch_object(self, zone: str, label: str, present: bool, ts: float, camera: str = "local") -> str:
         oid = f"obj:{zone}:{label}"
         if self.g.has_node(oid):
             self.g.nodes[oid]["present"] = present
             self.g.nodes[oid]["last_seen"] = ts
+            self.g.nodes[oid]["camera"] = camera
             if present:
                 self.g.nodes[oid]["seen_count"] = self.g.nodes[oid].get("seen_count", 0) + 1
         else:
@@ -103,6 +105,7 @@ class SceneGraph:
                 type="object",
                 label=label,
                 zone=zone,
+                camera=camera,
                 present=present,
                 first_seen=ts,
                 last_seen=ts,
@@ -111,14 +114,14 @@ class SceneGraph:
             self.g.add_edge(oid, f"zone:{zone}", rel="located_in")
         return oid
 
-    def _add_event(self, etype: str, zone: str, label: str, ts: float) -> dict:
+    def _add_event(self, etype: str, zone: str, label: str, ts: float, camera: str = "local") -> dict:
         eid = f"event:{ts:.3f}:{etype}:{label}"
-        self.g.add_node(eid, type="event", etype=etype, label=label, zone=zone, ts=ts)
+        self.g.add_node(eid, type="event", etype=etype, label=label, zone=zone, camera=camera, ts=ts)
         self.g.add_edge(eid, f"obj:{zone}:{label}", rel="concerns")
         if self._last_event_id and self.g.has_node(self._last_event_id):
             self.g.add_edge(eid, self._last_event_id, rel="preceded_by")
         self._last_event_id = eid
-        return {"id": eid, "etype": etype, "zone": zone, "label": label, "ts": ts}
+        return {"id": eid, "etype": etype, "zone": zone, "label": label, "camera": camera, "ts": ts}
 
     # --- queries (GraphRAG) ---------------------------------------------
     def is_familiar(self, zone: str, label: str) -> bool:

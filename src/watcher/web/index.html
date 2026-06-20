@@ -33,7 +33,9 @@
 <body>
 <header>
   <h1>WATCHER</h1>
-  <span class="badge" id="net">● OFFLINE / ON-DEVICE</span>
+  <span class="badge" id="net">● checking network…</span>
+  <span class="badge" id="cams" style="background:#101a2a;color:var(--accent);border-color:#1c3454;">0 cameras</span>
+  <span class="badge" id="trust" style="background:#1a1530;color:#b59cff;border-color:#332a55;">trust: —</span>
   <span class="badge" id="conn" style="background:#101a2a;color:var(--accent);border-color:#1c3454;">connecting…</span>
 </header>
 <div class="grid">
@@ -61,27 +63,66 @@ const logEl = document.getElementById('log');
 const thumb = document.getElementById('thumb');
 const narration = document.getElementById('narration');
 const connEl = document.getElementById('conn');
+const camsEl = document.getElementById('cams');
+const trustEl = document.getElementById('trust');
+
+function logLine(html) {
+  const div = document.createElement('div');
+  div.className = 'ev';
+  div.innerHTML = html;
+  logEl.prepend(div);
+}
+
+function setTrust(t) {
+  if (!t) return;
+  const ok = t.trusted;
+  trustEl.textContent = `trust: ${ok ? 'OK' : 'REJECT'} ${t.score!=null?('('+t.score+')'):''}`;
+  trustEl.style.color = ok ? 'var(--ok)' : 'var(--anom)';
+}
 
 function addEvent(e) {
   if (e.type === 'decision') {
     if (e.thumb) thumb.src = 'data:image/jpeg;base64,' + e.thumb;
+    setTrust(e.trust);
     const s = e.decision.status || 'normal';
-    narration.innerHTML = `<span class="pill ${s}">${s.toUpperCase()}</span><br>${e.decision.message || ''}`;
-    const div = document.createElement('div');
-    div.className = 'ev';
+    const cam = e.camera ? `${e.camera}/${e.zone}` : (e.zone||'');
+    narration.innerHTML = `<span class="pill ${s}">${s.toUpperCase()}</span> <span class="t">${cam}</span><br>${e.decision.message || ''}`;
     const appeared = (e.diff.appeared || []).join(', ') || '—';
     const gone = (e.diff.disappeared || []).join(', ') || '—';
-    div.innerHTML = `<div class="t">${new Date((e.ts||Date.now()/1000)*1000).toLocaleTimeString()} · ${e.decision.engine||''}</div>`
+    logLine(`<div class="t">${new Date((e.ts||Date.now()/1000)*1000).toLocaleTimeString()} · ${cam} · ${e.decision.engine||''}</div>`
       + `<div class="m"><b>${(e.decision.status||'').toUpperCase()}</b> — ${e.decision.message||''}</div>`
-      + `<div class="t">+ ${appeared}  |  - ${gone}</div>`;
-    logEl.prepend(div);
+      + `<div class="t">+ ${appeared}  |  - ${gone}</div>`);
     fetchGraph();
+  } else if (e.type === 'rejected') {
+    setTrust(e.trust);
+    logLine(`<div class="t">${e.camera||''}/${e.zone||''}</div>`
+      + `<div class="m"><b style="color:var(--anom)">CAPTUR REJECTED</b> — ${(e.trust&&e.trust.reasons||[]).join(', ')}</div>`);
+  } else if (e.type === 'camera') {
+    if (e.count != null) camsEl.textContent = `${e.count} camera${e.count===1?'':'s'}`;
+    logLine(`<div class="m">camera <b>${e.camera}</b> ${e.event}${e.zone?(' ('+e.zone+')'):''}</div>`);
   } else if (e.type === 'status') {
-    const div = document.createElement('div');
-    div.className = 'ev'; div.innerHTML = `<div class="m">${e.message} (perception: ${e.perception||'?'})</div>`;
-    logEl.prepend(div);
+    logLine(`<div class="m">${e.message} — perception: ${e.perception||'?'}, trust: ${e.trust||'?'}</div>`);
   }
 }
+
+// --- kill-switch / offline indicator ---
+const netEl = document.getElementById('net');
+async function checkNet() {
+  try {
+    const r = await fetch('/api/netstatus'); const j = await r.json();
+    if (j.online) {
+      netEl.textContent = '● ONLINE — not isolated';
+      netEl.style.background = '#2a1115'; netEl.style.color = 'var(--anom)'; netEl.style.borderColor = '#4a1c24';
+    } else {
+      netEl.textContent = '● OFFLINE / ON-DEVICE';
+      netEl.style.background = '#102a1c'; netEl.style.color = 'var(--ok)'; netEl.style.borderColor = '#1c4a32';
+    }
+  } catch (_) {
+    netEl.textContent = '● OFFLINE / ON-DEVICE';
+    netEl.style.background = '#102a1c'; netEl.style.color = 'var(--ok)'; netEl.style.borderColor = '#1c4a32';
+  }
+}
+checkNet(); setInterval(checkNet, 3000);
 
 // --- websocket ---
 function connect() {

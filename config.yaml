@@ -5,9 +5,12 @@ server:
   port: 8000
 
 capture:
-  # source: "webcam" uses a local camera index; "stream" waits for the phone
-  # to push frames over the /ws/ingest websocket.
-  source: "stream"        # "stream" | "webcam"
+  # source:
+  #   "stream" waits for phone(s) to push frames over /ws/ingest (multi-camera).
+  #   "webcam" uses a local camera index (laptop-only testing).
+  #   "demo"   synthesizes a changing scene so the dashboard shows activity with
+  #            no camera at all (great for a quick check or a no-hardware fallback).
+  source: "stream"        # "stream" | "webcam" | "demo"
   webcam_index: 0
   target_fps: 10          # frames pulled from the source for change detection
   zone: "desk"            # default zone label tagged onto observations
@@ -31,6 +34,14 @@ memory:
   backend: "networkx"     # "networkx" (reliable, local) | "cognee" (optional)
   db_path: "data/watcher_graph.sqlite"
   recent_window: 20       # how many recent observations the reasoner sees (GraphRAG)
+
+trust:
+  # Captur-style on-device photo-trust gate. Validates a frame is a genuine,
+  # usable capture before the agent reasons about it. Fully offline.
+  enabled: true
+  min_blur: 40.0          # min Laplacian variance; below = too blurry / no detail
+  min_brightness: 25      # reject near-black frames
+  max_brightness: 235     # reject blown-out / white frames
 
 narrator:
   enabled: true

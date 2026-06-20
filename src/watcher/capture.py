@@ -7,6 +7,7 @@ ingest websocket writes into and the pipeline reads from.
 from __future__ import annotations
 
 import threading
+import time
 from abc import ABC, abstractmethod
 
 import cv2
@@ -59,10 +60,49 @@ class StreamFrameSource(FrameSource):
             return None if self._latest is None else self._latest.copy()
 
 
+class DemoFrameSource(FrameSource):
+    """Synthesizes a changing scene so the dashboard shows life without a phone.
+
+    Every few seconds it adds/removes a coloured block, which trips the change
+    detector and drives the full pipeline — useful for verifying the UI and for a
+    fallback demo if no camera is available.
+    """
+
+    def __init__(self, width: int = 640, height: int = 480, period: float = 3.0) -> None:
+        self.w, self.h, self.period = width, height, period
+        self._blocks: list[tuple[int, int, int, tuple[int, int, int]]] = []
+        self._t0 = time.time()
+        self._last_change = 0.0
+        self._palette = [
+            (60, 160, 250), (80, 210, 130), (250, 200, 90),
+            (230, 110, 120), (180, 130, 240),
+        ]
+
+    def read(self) -> np.ndarray | None:
+        now = time.time()
+        if now - self._last_change > self.period:
+            self._last_change = now
+            if self._blocks and (len(self._blocks) >= 4 or now % 2 < 1):
+                self._blocks.pop(0)            # remove an object
+            else:
+                x = int(40 + (now * 53) % (self.w - 160))
+                y = int(40 + (now * 31) % (self.h - 160))
+                color = self._palette[len(self._blocks) % len(self._palette)]
+                self._blocks.append((x, y, 90, color))
+        frame = np.full((self.h, self.w, 3), 18, dtype=np.uint8)
+        for (x, y, s, color) in self._blocks:
+            cv2.rectangle(frame, (x, y), (x + s, y + s), color, -1)
+        # mild texture so the trust-gate's blur check passes
+        noise = np.random.randint(0, 12, (self.h, self.w, 3), dtype=np.uint8)
+        return cv2.add(frame, noise)
+
+
 def make_source(cfg) -> FrameSource:
     """Build a FrameSource from the capture config."""
     if cfg.source == "webcam":
         return WebcamFrameSource(cfg.webcam_index)
+    if cfg.source == "demo":
+        return DemoFrameSource()
     return StreamFrameSource()
 
 
