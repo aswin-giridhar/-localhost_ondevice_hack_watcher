@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from .capture import StreamFrameSource, make_source
+from .capture import DemoFrameSource, StreamFrameSource, WebcamFrameSource
 from .config import Config
 from .pipeline import Pipeline
 
@@ -73,14 +73,24 @@ def create_app(cfg: Config) -> FastAPI:
     pipeline = Pipeline(cfg, on_event=hub.publish_threadsafe)
     cam_counter = {"n": 0}
 
+    def _open_webcam(cam_id: str, zone: str) -> None:
+        try:
+            pipeline.add_camera(cam_id, zone, WebcamFrameSource(cfg.capture.webcam_index))
+        except Exception as exc:
+            hub.publish_threadsafe({"type": "error", "message": f"webcam unavailable: {exc}"})
+
     @app.on_event("startup")
     async def _startup() -> None:
         hub.loop = asyncio.get_running_loop()
         asyncio.create_task(hub.pump())
-        # Local sources (webcam/demo) register one camera up front; "stream" mode
-        # registers a camera per phone as it connects.
-        if cfg.capture.source in ("webcam", "demo"):
-            pipeline.add_camera("local", cfg.capture.zone, make_source(cfg.capture))
+        # Register local camera nodes up front. Phones/tablets always join live via
+        # /ws/ingest, so all three (laptop + phone + tablet) feed one shared graph.
+        if cfg.capture.source == "demo":
+            pipeline.add_camera("demo", cfg.capture.zone, DemoFrameSource())
+        elif cfg.capture.source == "webcam":
+            _open_webcam("laptop", cfg.capture.webcam_zone)
+        if cfg.capture.local_webcam and cfg.capture.source != "webcam":
+            _open_webcam("laptop", cfg.capture.webcam_zone)
         pipeline.start()
 
     @app.on_event("shutdown")

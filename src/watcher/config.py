@@ -20,6 +20,8 @@ class CaptureCfg:
     webcam_index: int = 0
     target_fps: int = 10
     zone: str = "desk"
+    local_webcam: bool = False      # also use this laptop's built-in camera as a node
+    webcam_zone: str = "laptop"     # zone label for the laptop camera
 
 
 @dataclass

@@ -14,6 +14,10 @@ capture:
   webcam_index: 0
   target_fps: 10          # frames pulled from the source for change detection
   zone: "desk"            # default zone label tagged onto observations
+  # Use THIS laptop's built-in camera as a node too, alongside any phones/tablets
+  # streaming in. With all three devices this gives you a 3-camera shared graph.
+  local_webcam: true
+  webcam_zone: "laptop"   # zone label for the laptop camera
 
 change_detector:
   # Cheap, always-on gate. The heavy VLM only fires when change > threshold.
