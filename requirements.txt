@@ -1,0 +1,21 @@
+# --- Core (required) ---
+opencv-python>=4.9.0        # frame capture + cheap change detection
+numpy>=1.26.0
+pyyaml>=6.0                 # config
+fastapi>=0.115.0           # dashboard + websocket server
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+pillow>=10.0.0
+
+# --- On-device inference (required for real perception/reasoning) ---
+ollama>=0.3.0              # serves the VLM + Phi-4-mini locally; falls back to mock if absent
+
+# --- Graph memory ---
+networkx>=3.2              # primary graph store (reliable, fully local)
+# cognee>=0.1.0            # OPTIONAL: richer graph engine; configure fully local before enabling
+
+# --- Voice / narration (optional) ---
+pyttsx3>=2.90             # offline TTS; on-screen narration used if unavailable
+
+# --- Testing ---
+pytest>=8.0.0

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Watcher — Phone Eye</title>
+<style>
+  body { margin:0; background:#0b0f17; color:#e6edf6; font-family:system-ui,"Segoe UI",sans-serif; text-align:center; }
+  video { width:100%; max-height:70vh; background:#000; }
+  .bar { padding:14px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; }
+  button { font-size:16px; padding:12px 22px; border-radius:10px; border:0; background:#4ea1ff; color:#04122a; font-weight:700; }
+  button.stop { background:#ff5d6c; color:#1a0509; }
+  #status { font-size:13px; color:#8aa0bd; }
+  .fps { font-size:13px; color:#8aa0bd; }
+  input { width:60px; }
+</style>
+</head>
+<body>
+  <video id="cam" autoplay playsinline muted></video>
+  <div class="bar">
+    <button id="start">Start streaming</button>
+    <button id="stop" class="stop" disabled>Stop</button>
+    <span class="fps">fps <input id="fps" type="number" value="6" min="1" max="15"></span>
+  </div>
+  <div id="status">Point at the scene, then press Start. Stays on your LAN — no internet.</div>
+  <canvas id="buf" style="display:none"></canvas>
+<script>
+const video = document.getElementById('cam');
+const buf = document.getElementById('buf');
+const statusEl = document.getElementById('status');
+let ws = null, timer = null, stream = null;
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 } }, audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    ws = new WebSocket(`ws://${location.host}/ws/ingest`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      statusEl.textContent = 'Streaming to the laptop brain…';
+      const fps = Math.max(1, Math.min(15, +document.getElementById('fps').value || 6));
+      timer = setInterval(sendFrame, 1000 / fps);
+      document.getElementById('start').disabled = true;
+      document.getElementById('stop').disabled = false;
+    };
+    ws.onclose = () => { statusEl.textContent = 'Disconnected.'; stop(); };
+  } catch (e) { statusEl.textContent = 'Camera error: ' + e; }
+}
+
+function sendFrame() {
+  if (!ws || ws.readyState !== 1 || !video.videoWidth) return;
+  buf.width = video.videoWidth; buf.height = video.videoHeight;
+  buf.getContext('2d').drawImage(video, 0, 0);
+  buf.toBlob(b => b && b.arrayBuffer().then(ab => ws.readyState === 1 && ws.send(ab)),
+             'image/jpeg', 0.7);
+}
+
+function stop() {
+  if (timer) clearInterval(timer); timer = null;
+  if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  document.getElementById('start').disabled = false;
+  document.getElementById('stop').disabled = true;
+}
+
+document.getElementById('start').onclick = start;
+document.getElementById('stop').onclick = stop;
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# Watcher configuration — all local, no cloud.
+
+server:
+  host: "0.0.0.0"        # bind to LAN so the phone can reach it
+  port: 8000
+
+capture:
+  # source: "webcam" uses a local camera index; "stream" waits for the phone
+  # to push frames over the /ws/ingest websocket.
+  source: "stream"        # "stream" | "webcam"
+  webcam_index: 0
+  target_fps: 10          # frames pulled from the source for change detection
+  zone: "desk"            # default zone label tagged onto observations
+
+change_detector:
+  # Cheap, always-on gate. The heavy VLM only fires when change > threshold.
+  min_area: 1500          # min changed-pixel area (px) to count as motion
+  threshold: 25           # per-pixel diff threshold (0-255)
+  debounce_seconds: 2.0   # ignore further triggers within this window
+  warmup_frames: 15       # frames to learn the background before reacting
+
+perception:
+  backend: "ollama"       # "ollama" | "mock"
+  # A single VLM that can both see AND reason keeps us under 4GB VRAM.
+  vlm_model: "qwen2-vl:2b"
+  # Optional separate reasoner. Leave blank to let the VLM also decide.
+  reasoner_model: "phi4-mini"
+  request_timeout: 60
+
+memory:
+  backend: "networkx"     # "networkx" (reliable, local) | "cognee" (optional)
+  db_path: "data/watcher_graph.sqlite"
+  recent_window: 20       # how many recent observations the reasoner sees (GraphRAG)
+
+narrator:
+  enabled: true
+  tts: false              # set true to speak via pyttsx3; on-screen text always shown
+
+tracer:
+  path: "traces/decisions.jsonl"   # Overmind-style decision traces

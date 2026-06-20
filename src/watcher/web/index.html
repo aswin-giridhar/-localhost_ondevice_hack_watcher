@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Watcher — Offline Scene Agent</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #131a26; --line: #1f2a3a; --txt: #e6edf6;
+    --muted: #8aa0bd; --accent: #4ea1ff; --anom: #ff5d6c; --note: #ffc857; --ok: #45d483;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--txt); }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+  .badge { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #102a1c; color: var(--ok); border: 1px solid #1c4a32; }
+  .grid { display: grid; grid-template-columns: 320px 1fr 340px; gap: 12px; padding: 12px; height: calc(100vh - 58px); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px; }
+  #thumb { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 4/3; object-fit: cover; }
+  #narration { margin-top: 12px; font-size: 15px; line-height: 1.4; min-height: 48px; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-bottom: 8px; font-weight: 600; }
+  .pill.anomaly { background: #2a1115; color: var(--anom); } .pill.noteworthy { background: #2a2410; color: var(--note); } .pill.normal { background: #102a1c; color: var(--ok); }
+  canvas { width: 100%; height: 100%; flex: 1; }
+  #log { overflow-y: auto; flex: 1; font-size: 13px; }
+  .ev { padding: 8px; border-bottom: 1px solid var(--line); }
+  .ev .t { color: var(--muted); font-size: 11px; }
+  .ev .m { margin-top: 2px; }
+  .legend { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WATCHER</h1>
+  <span class="badge" id="net">● OFFLINE / ON-DEVICE</span>
+  <span class="badge" id="conn" style="background:#101a2a;color:var(--accent);border-color:#1c3454;">connecting…</span>
+</header>
+<div class="grid">
+  <section class="panel">
+    <h2>Camera</h2>
+    <img id="thumb" alt="latest keyframe" />
+    <div id="narration"><span class="muted">Waiting for the scene to change…</span></div>
+  </section>
+  <section class="panel">
+    <h2>Knowledge Graph (live)</h2>
+    <canvas id="graph"></canvas>
+    <div class="legend">
+      <span><span class="dot" style="background:#4ea1ff"></span>zone</span>
+      <span><span class="dot" style="background:#45d483"></span>object</span>
+      <span><span class="dot" style="background:#ffc857"></span>event</span>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Decision Trace</h2>
+    <div id="log"></div>
+  </section>
+</div>
+<script>
+const logEl = document.getElementById('log');
+const thumb = document.getElementById('thumb');
+const narration = document.getElementById('narration');
+const connEl = document.getElementById('conn');
+
+function addEvent(e) {
+  if (e.type === 'decision') {
+    if (e.thumb) thumb.src = 'data:image/jpeg;base64,' + e.thumb;
+    const s = e.decision.status || 'normal';
+    narration.innerHTML = `<span class="pill ${s}">${s.toUpperCase()}</span><br>${e.decision.message || ''}`;
+    const div = document.createElement('div');
+    div.className = 'ev';
+    const appeared = (e.diff.appeared || []).join(', ') || '—';
+    const gone = (e.diff.disappeared || []).join(', ') || '—';
+    div.innerHTML = `<div class="t">${new Date((e.ts||Date.now()/1000)*1000).toLocaleTimeString()} · ${e.decision.engine||''}</div>`
+      + `<div class="m"><b>${(e.decision.status||'').toUpperCase()}</b> — ${e.decision.message||''}</div>`
+      + `<div class="t">+ ${appeared}  |  - ${gone}</div>`;
+    logEl.prepend(div);
+    fetchGraph();
+  } else if (e.type === 'status') {
+    const div = document.createElement('div');
+    div.className = 'ev'; div.innerHTML = `<div class="m">${e.message} (perception: ${e.perception||'?'})</div>`;
+    logEl.prepend(div);
+  }
+}
+
+// --- websocket ---
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws/events`);
+  ws.onopen = () => { connEl.textContent = 'live'; ws.send('hi'); };
+  ws.onclose = () => { connEl.textContent = 'reconnecting…'; setTimeout(connect, 1500); };
+  ws.onmessage = (m) => { try { addEvent(JSON.parse(m.data)); } catch (_) {} };
+}
+connect();
+
+// --- tiny force-directed graph on canvas (no external deps, fully offline) ---
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+let nodes = [], edges = [], pos = {};
+const COLOR = { zone: '#4ea1ff', object: '#45d483', event: '#ffc857' };
+
+function resize() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+window.addEventListener('resize', resize); resize();
+
+async function fetchGraph() {
+  try {
+    const r = await fetch('/api/graph'); const g = await r.json();
+    nodes = g.nodes; edges = g.edges;
+    nodes.forEach(n => { if (!pos[n.id]) pos[n.id] = { x: Math.random()*canvas.width, y: Math.random()*canvas.height, vx:0, vy:0 }; });
+  } catch (_) {}
+}
+
+function step() {
+  const W = canvas.width, H = canvas.height;
+  // repulsion
+  for (let i=0;i<nodes.length;i++) for (let j=i+1;j<nodes.length;j++) {
+    const a=pos[nodes[i].id], b=pos[nodes[j].id]; if(!a||!b) continue;
+    let dx=a.x-b.x, dy=a.y-b.y, d=Math.hypot(dx,dy)||1; const f=2200/(d*d);
+    a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f;
+  }
+  // springs
+  edges.forEach(e => { const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
+    let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1; const f=(d-90)*0.01;
+    a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f; });
+  nodes.forEach(n => { const p=pos[n.id]; if(!p) return;
+    p.vx+=(W/2-p.x)*0.0008; p.vy+=(H/2-p.y)*0.0008;
+    p.vx*=0.85; p.vy*=0.85; p.x+=p.vx; p.y+=p.vy;
+    p.x=Math.max(20,Math.min(W-20,p.x)); p.y=Math.max(20,Math.min(H-20,p.y)); });
+  draw();
+  requestAnimationFrame(step);
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#27374d'; ctx.lineWidth=1;
+  edges.forEach(e => { const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); });
+  nodes.forEach(n => { const p=pos[n.id]; if(!p) return;
+    ctx.beginPath(); ctx.fillStyle=COLOR[n.group]||'#9aa7b8';
+    const r = n.group==='zone'?9:6; ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cdd9e8'; ctx.font='11px system-ui';
+    ctx.fillText(String(n.label).slice(0,18), p.x+9, p.y+3); });
+}
+
+fetchGraph(); setInterval(fetchGraph, 4000); step();
+</script>
+</body>
+</html>

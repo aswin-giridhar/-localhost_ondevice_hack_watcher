@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Data / runtime artifacts
+data/
+*.db
+*.sqlite
+*.sqlite3
+traces/
+*.jsonl
+captures/
+*.log
+
+# Models / weights (never commit, keep offline-local)
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
