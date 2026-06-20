@@ -89,8 +89,11 @@ function addEvent(e) {
     narration.innerHTML = `<span class="pill ${s}">${s.toUpperCase()}</span> <span class="t">${cam}</span><br>${e.decision.message || ''}`;
     const appeared = (e.diff.appeared || []).join(', ') || '—';
     const gone = (e.diff.disappeared || []).join(', ') || '—';
+    const moves = (e.diff.transfers || []).map(t => `${t.label} ${t.from_zone}→${t.to_zone}`).join(', ');
+    const moveLine = moves ? `<div class="t" style="color:var(--accent)">↔ moved: ${moves}</div>` : '';
     logLine(`<div class="t">${new Date((e.ts||Date.now()/1000)*1000).toLocaleTimeString()} · ${cam} · ${e.decision.engine||''}</div>`
       + `<div class="m"><b>${(e.decision.status||'').toUpperCase()}</b> — ${e.decision.message||''}</div>`
+      + moveLine
       + `<div class="t">+ ${appeared}  |  - ${gone}</div>`);
     fetchGraph();
   } else if (e.type === 'rejected') {

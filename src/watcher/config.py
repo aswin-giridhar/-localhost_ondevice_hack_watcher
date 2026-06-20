@@ -45,6 +45,7 @@ class MemoryCfg:
     backend: str = "networkx"
     db_path: str = "data/watcher_graph.sqlite"
     recent_window: int = 20
+    transfer_window_seconds: float = 30.0   # window to match a cross-camera move
 
 
 @dataclass

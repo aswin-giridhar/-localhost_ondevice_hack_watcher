@@ -44,10 +44,16 @@ class Reasoner:
         return self._decide_rules(obs, diff)
 
     def _decide_llm(self, obs: Observation, diff: dict, context: str) -> dict:
+        moves = "; ".join(
+            f"{t['label']} {t['from_zone']}->{t['to_zone']}" for t in diff.get("transfers", [])
+        ) or "none"
         user = (
             f"CONTEXT:\n{context}\n\n"
             f"CHANGE:\n appeared={diff['appeared']} disappeared={diff['disappeared']}\n"
-            f"VLM summary: {obs.summary}"
+            f" cross-camera moves={moves}\n"
+            f"VLM summary: {obs.summary}\n"
+            "If a cross-camera move is present, prioritise narrating it (e.g. 'the mug "
+            "moved from desk to door')."
         )
         resp = self._client.chat(
             model=self._model,
@@ -70,6 +76,15 @@ class Reasoner:
 
     def _decide_rules(self, obs: Observation, diff: dict) -> dict:
         appeared, disappeared = diff["appeared"], diff["disappeared"]
+        transfers = diff.get("transfers", [])
+        if transfers:
+            moves = ", ".join(f"{t['label']} ({t['from_zone']}→{t['to_zone']})" for t in transfers)
+            return {
+                "status": "noteworthy",
+                "message": f"Tracked a move across cameras: {moves}.",
+                "reason": "object left one zone and reappeared in another within the window",
+                "engine": "rules",
+            }
         unfamiliar = [l for l in appeared if not self.graph.is_familiar(obs.zone, l)]
         if unfamiliar:
             return {

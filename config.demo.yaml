@@ -28,6 +28,7 @@ memory:
   backend: "networkx"
   db_path: "data/watcher_demo_graph.sqlite"
   recent_window: 20
+  transfer_window_seconds: 30.0
 
 trust:
   enabled: true

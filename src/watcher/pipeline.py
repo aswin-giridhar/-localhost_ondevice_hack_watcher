@@ -41,7 +41,7 @@ class Pipeline:
         self.on_event = on_event or (lambda e: None)
 
         # Shared brain across all cameras.
-        self.graph = SceneGraph(cfg.memory.db_path)
+        self.graph = SceneGraph(cfg.memory.db_path, cfg.memory.transfer_window_seconds)
         self.perception = Perception(cfg.perception)
         self.reasoner = Reasoner(cfg.perception, self.graph)
         self.narrator = Narrator(cfg.narrator.enabled, cfg.narrator.tts)

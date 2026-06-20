@@ -38,6 +38,8 @@ memory:
   backend: "networkx"     # "networkx" (reliable, local) | "cognee" (optional)
   db_path: "data/watcher_graph.sqlite"
   recent_window: 20       # how many recent observations the reasoner sees (GraphRAG)
+  transfer_window_seconds: 30.0  # if an object leaves one camera and reappears in
+                                 # another within this window, it's reported as a MOVE
 
 trust:
   # Captur-style on-device photo-trust gate. Validates a frame is a genuine,

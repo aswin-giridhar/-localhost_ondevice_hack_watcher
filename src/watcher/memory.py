@@ -19,11 +19,15 @@ from .perception import Observation
 
 
 class SceneGraph:
-    def __init__(self, db_path: str = "data/watcher_graph.sqlite") -> None:
+    def __init__(self, db_path: str = "data/watcher_graph.sqlite",
+                 transfer_window: float = 30.0) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.transfer_window = transfer_window
         self.g = nx.DiGraph()
         self._last_event_id: str | None = None
+        # label -> (zone, ts) of the most recent departure, for cross-camera moves.
+        self._departures: dict[str, tuple[str, float]] = {}
         self._init_db()
         self._load()
 
@@ -59,27 +63,47 @@ class SceneGraph:
 
         seen = obs.labels()
         present = self._present_objects(obs.zone)
+        now = obs.timestamp
 
         appeared = sorted(seen - present)
         disappeared = sorted(present - seen)
 
+        # Cross-camera tracking: an appearance that matches a recent departure from a
+        # DIFFERENT zone is a move, not a brand-new object.
+        transfers = []
+        real_appeared = []
+        for label in appeared:
+            dep = self._departures.get(label)
+            if dep and dep[0] != obs.zone and (now - dep[1]) <= self.transfer_window:
+                transfers.append({"label": label, "from_zone": dep[0], "to_zone": obs.zone})
+                self._departures.pop(label, None)
+            else:
+                real_appeared.append(label)
+
         for label in seen:
-            self._touch_object(obs.zone, label, present=True, ts=obs.timestamp, camera=obs.camera)
+            self._touch_object(obs.zone, label, present=True, ts=now, camera=obs.camera)
         for label in disappeared:
-            self._touch_object(obs.zone, label, present=False, ts=obs.timestamp, camera=obs.camera)
+            self._touch_object(obs.zone, label, present=False, ts=now, camera=obs.camera)
 
         events = []
-        for label in appeared:
-            events.append(self._add_event("appeared", obs.zone, label, obs.timestamp, obs.camera))
+        for t in transfers:
+            events.append(self._add_move_event(t["label"], t["from_zone"], t["to_zone"], now, obs.camera))
+        for label in real_appeared:
+            events.append(self._add_event("appeared", obs.zone, label, now, obs.camera))
         for label in disappeared:
-            events.append(self._add_event("disappeared", obs.zone, label, obs.timestamp, obs.camera))
+            events.append(self._add_event("disappeared", obs.zone, label, now, obs.camera))
+
+        # Record this zone's departures so a later appearance elsewhere can match.
+        for label in disappeared:
+            self._departures[label] = (obs.zone, now)
 
         self._save()
         return {
             "zone": obs.zone,
             "camera": obs.camera,
-            "appeared": appeared,
+            "appeared": real_appeared,
             "disappeared": disappeared,
+            "transfers": transfers,
             "present": sorted(seen),
             "events": events,
         }
@@ -123,6 +147,21 @@ class SceneGraph:
         self._last_event_id = eid
         return {"id": eid, "etype": etype, "zone": zone, "label": label, "camera": camera, "ts": ts}
 
+    def _add_move_event(self, label: str, from_zone: str, to_zone: str, ts: float,
+                        camera: str = "local") -> dict:
+        """Record a cross-zone move: links the object's nodes in both zones."""
+        eid = f"event:{ts:.3f}:moved:{label}"
+        self.g.add_node(eid, type="event", etype="moved", label=label, zone=to_zone,
+                        from_zone=from_zone, to_zone=to_zone, camera=camera, ts=ts)
+        self.g.add_edge(eid, f"obj:{to_zone}:{label}", rel="concerns")
+        if self.g.has_node(f"obj:{from_zone}:{label}"):
+            self.g.add_edge(eid, f"obj:{from_zone}:{label}", rel="moved_from")
+        if self._last_event_id and self.g.has_node(self._last_event_id):
+            self.g.add_edge(eid, self._last_event_id, rel="preceded_by")
+        self._last_event_id = eid
+        return {"id": eid, "etype": "moved", "label": label, "from_zone": from_zone,
+                "to_zone": to_zone, "camera": camera, "ts": ts}
+
     # --- queries (GraphRAG) ---------------------------------------------
     def is_familiar(self, zone: str, label: str) -> bool:
         """Has this object been seen in this zone before? (structural anomaly check)"""
@@ -164,7 +203,10 @@ class SceneGraph:
             t = d.get("type", "object")
             label = d.get("label", nid)
             if t == "event":
-                label = f"{d.get('etype', '?')}: {d.get('label', '')}"
+                if d.get("etype") == "moved":
+                    label = f"{d.get('label', '')}: {d.get('from_zone')}→{d.get('to_zone')}"
+                else:
+                    label = f"{d.get('etype', '?')}: {d.get('label', '')}"
             nodes.append({"id": nid, "label": label, "group": groups.get(t, t),
                           "present": d.get("present", True)})
         edges = [

@@ -49,6 +49,24 @@ def test_persists_across_instances(tmp_path):
     assert "mug" in labels and "laptop" in labels
 
 
+def test_cross_camera_move_is_tracked(tmp_path):
+    g = SceneGraph(str(tmp_path / "g.sqlite"))
+    g.ingest(_obs(["mug"], zone="desk", ts=100.0))
+    g.ingest(_obs([], zone="desk", ts=101.0))            # mug leaves the desk camera
+    d = g.ingest(_obs(["mug"], zone="door", ts=110.0))   # reappears at the door camera
+    assert d["transfers"] == [{"label": "mug", "from_zone": "desk", "to_zone": "door"}]
+    assert d["appeared"] == []                            # reported as a move, not new
+
+
+def test_move_beyond_window_is_treated_as_new(tmp_path):
+    g = SceneGraph(str(tmp_path / "g.sqlite"), transfer_window=5.0)
+    g.ingest(_obs(["mug"], zone="desk", ts=100.0))
+    g.ingest(_obs([], zone="desk", ts=101.0))
+    d = g.ingest(_obs(["mug"], zone="door", ts=110.0))   # 9s later, window is 5s
+    assert d["transfers"] == []
+    assert d["appeared"] == ["mug"]
+
+
 def test_to_vis_shape(tmp_path):
     g = SceneGraph(str(tmp_path / "g.sqlite"))
     g.ingest(_obs(["mug"]))
